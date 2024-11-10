@@ -113,12 +113,11 @@ def load_model():
     ])
     model.load_weights('custom_cnn_skin_disease_classifier_weights.weights.h5')
     return model
+
 @st.cache_resource
 def load_llm():
     llm = Ollama(model="llama2")
     return llm
-
-
 
 prompt = PromptTemplate(
     template="""You are a medical chatbot specializing in skin diseases...""",
@@ -130,112 +129,9 @@ def generate_response(query, disease, llm):
     response = chain.invoke({"disease": disease, "query": query})
     return response
 
-def initialize_session_state():
-    """Initialize all session state variables"""
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-    if 'current_disease' not in st.session_state:
-        st.session_state.current_disease = None
-    if 'initial_prompt_shown' not in st.session_state:
-        st.session_state.initial_prompt_shown = False
-
-def handle_image_upload(model):
-    """Handle image upload and disease detection"""
-    uploaded_file = st.file_uploader("Upload an image of the affected skin area", type=["jpg", "jpeg", "png"])
-    
-    if uploaded_file:
-        try:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-            
-            processed_image = preprocess_image(image)
-            prediction = model.predict(processed_image)
-            predicted_class = DISEASE_CLASSES[np.argmax(prediction[0])]
-            confidence = np.max(prediction[0]) * 100
-
-            # Reset chat state when new image is uploaded
-            st.session_state.current_disease = predicted_class
-            st.session_state.messages = []
-            st.session_state.initial_prompt_shown = False
-            
-            st.success(f"Detected Condition: **{predicted_class}** (Confidence: {confidence:.2f}%)")
-        except Exception as e:
-            st.error(f"Error processing image: {str(e)}")
-
-def show_condition_info():
-    """Display information about the detected condition"""
-    if st.session_state.current_disease:
-        disease = st.session_state.current_disease
-        st.write(f"**Condition:** {disease}")
-        
-        with st.expander("Symptoms", expanded=True):
-            st.markdown(DISEASE_INFO[disease]["symptoms"])
-        with st.expander("Causes", expanded=True):
-            st.markdown(DISEASE_INFO[disease]["causes"])
-        with st.expander("Prevention & Cures", expanded=True):
-            st.markdown(DISEASE_INFO[disease]["preventions"])
-    else:
-        st.warning("Please upload an image to detect the condition first.")
-
-def handle_chat(llm):
-    """Handle chat interface and responses"""
-    if not st.session_state.current_disease:
-        st.warning("Please upload an image to diagnose your condition before chatting.")
-        return
-
-    # Show initial prompt only once per disease
-    if not st.session_state.initial_prompt_shown:
-        welcome_message = (f"I can help you learn more about {st.session_state.current_disease}. "
-                         "Ask me about symptoms, causes, or prevention tips for your condition.")
-        st.session_state.messages.append({"role": "assistant", "content": welcome_message})
-        st.session_state.initial_prompt_shown = True
-
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Handle user input
-    if chat_prompt := st.chat_input("Ask about your condition..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": chat_prompt})
-        
-        # Generate response based on query type
-        lower_prompt = chat_prompt.lower()
-        if any(keyword in lower_prompt for keyword in ["yes", "symptom", "cause", "prevent", "cure"]):
-            if "symptom" in lower_prompt:
-                response = DISEASE_INFO[st.session_state.current_disease]["symptoms"]
-            elif "cause" in lower_prompt:
-                response = DISEASE_INFO[st.session_state.current_disease]["causes"]
-            elif "prevent" in lower_prompt or "cure" in lower_prompt:
-                response = DISEASE_INFO[st.session_state.current_disease]["preventions"]
-            else:
-                response = ("I can provide information about symptoms, causes, or prevention methods. "
-                          "What would you like to know?")
-        else:
-            try:
-                response = generate_response(chat_prompt, st.session_state.current_disease, llm)
-                if st.session_state.current_disease.lower() not in response.lower():
-                    response = (f"Let me focus on {st.session_state.current_disease}. "
-                              "Please ask about symptoms, causes, or prevention methods.")
-            except Exception as e:
-                response = ("I apologize, but I'm having trouble generating a response. "
-                          "Please try asking about specific symptoms, causes, or prevention methods.")
-
-        # Add assistant response
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Force refresh to show new messages
-        st.experimental_rerun()
-
+# Improved UI
 def main():
-    # Page configuration
-    st.set_page_config(page_title="Skin Disease Detection & Assistant", layout="wide")
-    
-    # Initialize session state
-    initialize_session_state()
-    
-    # Sidebar navigation
+    # Sidebar
     st.sidebar.title("Navigation")
     st.sidebar.markdown("Navigate through the app to explore features:")
     options = ["Upload Image", "View Condition Info", "Chat with Assistant"]
@@ -243,27 +139,107 @@ def main():
     st.sidebar.markdown("___")
     st.sidebar.info("💡 **Tip:** For better accuracy, upload clear images in good lighting.")
 
-    # Main title
     st.title("🌟 Skin Disease Detection and Assistant")
 
     # Load models
-    try:
-        model = load_model()
-        llm = load_llm()
-    except Exception as e:
-        st.error(f"Error loading models: {str(e)}")
-        return
+      # Assumes you have a function to load the detection model
+    llm = load_llm()  # Assumes you have a function to load the language model (LLM)
 
-    # Handle page navigation
+    # Initialize session state
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    if 'current_disease' not in st.session_state:
+        st.session_state.current_disease = None
+
+    # Handle different sections
     if choice == "Upload Image":
         st.subheader("📤 Upload an Image")
-        handle_image_upload(model)
+        uploaded_file = st.file_uploader("Upload an image of the affected skin area", type=["jpg", "jpeg", "png"])
+        
+        if uploaded_file:
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
+
+            try:
+                processed_image = preprocess_image(image)
+                prediction = model.predict(processed_image)
+                predicted_class = DISEASE_CLASSES[np.argmax(prediction[0])]
+                confidence = np.max(prediction[0]) * 100
+
+                st.session_state.current_disease = predicted_class
+                st.success(f"Detected Condition: **{predicted_class}** (Confidence: {confidence:.2f}%)")
+            except Exception as e:
+                st.error(f"Error processing image: {str(e)}")
+
     elif choice == "View Condition Info":
         st.subheader("🔍 Disease Information")
-        show_condition_info()
+        if st.session_state.current_disease:
+            disease = st.session_state.current_disease
+            st.write(f"**Condition:** {disease}")
+            with st.expander("Symptoms"):
+                st.markdown(DISEASE_INFO[disease]["symptoms"])
+            with st.expander("Causes"):
+                st.markdown(DISEASE_INFO[disease]["causes"])
+            with st.expander("Prevention & Cures"):
+                st.markdown(DISEASE_INFO[disease]["preventions"])
+        else:
+            st.warning("Upload an image to detect the condition first.")
+
     elif choice == "Chat with Assistant":
         st.subheader("💬 Chat with the Assistant")
-        handle_chat(llm)
+
+        # Ensure a detected disease is available
+        if st.session_state.current_disease:
+            if 'initial_prompt_shown' not in st.session_state:
+                # Show initial prompt only once
+                st.session_state.initial_prompt_shown = True
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": f"Do you want to know more about {st.session_state.current_disease}? "
+                               "I can help you with symptoms, causes, and prevention tips. "
+                               "Type 'Yes' to proceed or ask a specific question related to the condition."
+                })
+
+            # Display chat messages
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.write(message["content"])
+
+            # User chat input
+            chat_prompt = st.chat_input("Ask about your condition...")
+            if chat_prompt:
+                # Append user message
+                st.session_state.messages.append({"role": "user", "content": chat_prompt})
+                with st.chat_message("user"):
+                    st.write(chat_prompt)
+
+                # Validate response for skin-related topics
+                lower_prompt = chat_prompt.lower()
+                if any(keyword in lower_prompt for keyword in ["yes", "symptom", "cause", "prevent", "cure"]):
+                    # Respond based on user's query
+                    if "symptom" in lower_prompt:
+                        response = DISEASE_INFO[st.session_state.current_disease]["symptoms"]
+                    elif "cause" in lower_prompt:
+                        response = DISEASE_INFO[st.session_state.current_disease]["causes"]
+                    elif "prevent" in lower_prompt or "cure" in lower_prompt:
+                        response = DISEASE_INFO[st.session_state.current_disease]["preventions"]
+                    else:
+                        response = "Great! Let me know specifically what you’d like to know (e.g., symptoms, causes, prevention)."
+                else:
+                    # Use LLM for other valid queries
+                    response = generate_response(chat_prompt, st.session_state.current_disease, llm)
+
+                # Validate assistant response is ethical and skin-related
+                if st.session_state.current_disease.lower() not in response.lower():
+                    response = ("I'm sorry, but I can only assist with information related to skin diseases. "
+                                "Please ask about symptoms, causes, or prevention tips for your condition.")
+
+                # Append and display assistant's response
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                with st.chat_message("assistant"):
+                    st.write(response)
+        else:
+            st.warning("Upload an image to diagnose your condition before chatting.")
 
 if __name__ == "__main__":
     main()
