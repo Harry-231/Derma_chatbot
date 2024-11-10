@@ -23,6 +23,7 @@ def setup_environment_from_secrets():
     os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
     os.environ["LANGCHAIN_TRACKING_V2"] = "true"
     os.environ["LANGCHAIN_PROJECT"] = st.secrets["LANGCHAIN_PROJECT"]
+
 # Define constants
 DISEASE_CLASSES = [
     'nevus', 'melanoma', 'pigmented benign keratosis',
@@ -73,7 +74,6 @@ DISEASE_INFO = {
     }
 }
 
-# Functions for preprocessing and model loading
 def preprocess_image(image):
     if image.mode != 'RGB':
         image = image.convert('RGB')
@@ -120,7 +120,9 @@ def load_llm():
     return llm
 
 prompt = PromptTemplate(
-    template="""You are a medical chatbot specializing in skin diseases...""",
+    template="""You are a medical chatbot specializing in skin diseases. 
+    A user has been diagnosed with {disease} and asks: {query}. 
+    Provide accurate, helpful information while being mindful of medical ethics and encouraging professional medical consultation.""",
     input_variables=["disease", "query"]
 )
 
@@ -129,7 +131,30 @@ def generate_response(query, disease, llm):
     response = chain.invoke({"disease": disease, "query": query})
     return response
 
-# Improved UI
+def generate_comprehensive_response(disease, topic=None):
+    """Generate a comprehensive response based on the disease and topic"""
+    disease_info = DISEASE_INFO[disease]
+    
+    # Handle general confirmation (yes/sure/okay responses)
+    if topic is None:
+        return (f"Let me tell you about {disease}:\n\n"
+               f"{disease_info['symptoms']}\n\n"
+               "Would you like to know more about the causes or prevention methods?")
+    
+    # Handle specific topics
+    if 'symptom' in topic:
+        return f"Regarding {disease} symptoms:\n\n{disease_info['symptoms']}"
+    elif 'cause' in topic:
+        return f"About the causes of {disease}:\n\n{disease_info['causes']}"
+    elif any(word in topic for word in ['prevent', 'cure', 'treat']):
+        return f"Here's information about preventing and managing {disease}:\n\n{disease_info['preventions']}"
+    else:
+        # Use all information for a comprehensive response
+        return (f"Here's what you should know about {disease}:\n\n"
+               f"SYMPTOMS:\n{disease_info['symptoms']}\n\n"
+               f"CAUSES:\n{disease_info['causes']}\n\n"
+               f"PREVENTION & MANAGEMENT:\n{disease_info['preventions']}")
+
 def main():
     # Sidebar
     st.sidebar.title("Navigation")
@@ -142,8 +167,8 @@ def main():
     st.title("🌟 Skin Disease Detection and Assistant")
 
     # Load models
-    model = load_model()  # Assumes you have a function to load the detection model
-    llm = load_llm()  # Assumes you have a function to load the language model (LLM)
+    model = load_model()
+    llm = load_llm()
 
     # Initialize session state
     if 'messages' not in st.session_state:
@@ -188,16 +213,18 @@ def main():
     elif choice == "Chat with Assistant":
         st.subheader("💬 Chat with the Assistant")
 
-        # Ensure a detected disease is available
         if st.session_state.current_disease:
             if 'initial_prompt_shown' not in st.session_state:
-                # Show initial prompt only once
                 st.session_state.initial_prompt_shown = True
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": f"Do you want to know more about {st.session_state.current_disease}? "
-                               "I can help you with symptoms, causes, and prevention tips. "
-                               "Type 'Yes' to proceed or ask a specific question related to the condition."
+                    "content": (f"I can help you understand more about {st.session_state.current_disease}. "
+                               "You can ask me about:\n"
+                               "• Symptoms and how to identify them\n"
+                               "• Common causes and risk factors\n"
+                               "• Prevention methods and treatment options\n"
+                               "• General information about the condition\n\n"
+                               "What would you like to know?")
                 })
 
             # Display chat messages
@@ -213,33 +240,40 @@ def main():
                 with st.chat_message("user"):
                     st.write(chat_prompt)
 
-                # Validate response for skin-related topics
+                # Process user input
                 lower_prompt = chat_prompt.lower()
-                if any(keyword in lower_prompt for keyword in ["yes", "symptom", "cause", "prevent", "cure"]):
-                    # Respond based on user's query
-                    if "symptom" in lower_prompt:
-                        response = DISEASE_INFO[st.session_state.current_disease]["symptoms"]
-                    elif "cause" in lower_prompt:
-                        response = DISEASE_INFO[st.session_state.current_disease]["causes"]
-                    elif "prevent" in lower_prompt or "cure" in lower_prompt:
-                        response = DISEASE_INFO[st.session_state.current_disease]["preventions"]
-                    else:
-                        response = "Great! Let me know specifically what you’d like to know (e.g., symptoms, causes, prevention)."
+                
+                # Determine response based on user input
+                if any(word in lower_prompt for word in ['yes', 'sure', 'okay', 'tell me']):
+                    response = generate_comprehensive_response(st.session_state.current_disease)
+                elif any(keyword in lower_prompt for keyword in ['symptom', 'cause', 'prevent', 'cure', 'treat']):
+                    response = generate_comprehensive_response(st.session_state.current_disease, lower_prompt)
                 else:
-                    # Use LLM for other valid queries
-                    response = generate_response(chat_prompt, st.session_state.current_disease, llm)
+                    # For other queries, use LLM but with context
+                    try:
+                        llm_response = generate_response(chat_prompt, st.session_state.current_disease, llm)
+                        # Validate LLM response contains relevant information
+                        if st.session_state.current_disease.lower() in llm_response.lower():
+                            response = llm_response
+                        else:
+                            # Fallback to comprehensive information
+                            response = generate_comprehensive_response(st.session_state.current_disease)
+                    except Exception as e:
+                        # Fallback response in case of LLM errors
+                        response = generate_comprehensive_response(st.session_state.current_disease)
 
-                # Validate assistant response is ethical and skin-related
-                if st.session_state.current_disease.lower() not in response.lower():
-                    response = ("I'm sorry, but I can only assist with information related to skin diseases. "
-                                "Please ask about symptoms, causes, or prevention tips for your condition.")
+                # Add follow-up suggestions
+                response += "\n\nYou can also ask about:\n" \
+                           "• Specific symptoms to watch for\n" \
+                           "• Risk factors and causes\n" \
+                           "• Treatment options and prevention strategies"
 
                 # Append and display assistant's response
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.write(response)
         else:
-            st.warning("Upload an image to diagnose your condition before chatting.")
+            st.warning("Please upload an image to diagnose your condition before chatting.")
 
 if __name__ == "__main__":
     main()
