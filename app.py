@@ -142,7 +142,7 @@ def main():
     st.title("🌟 Skin Disease Detection and Assistant")
 
     # Load models
-      # Assumes you have a function to load the detection model
+    model = load_model()  # Assumes you have a function to load the detection model
     llm = load_llm()  # Assumes you have a function to load the language model (LLM)
 
     # Initialize session state
