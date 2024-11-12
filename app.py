@@ -216,16 +216,11 @@ def main():
         if st.session_state.current_disease:
             if 'initial_prompt_shown' not in st.session_state:
                 st.session_state.initial_prompt_shown = True
+                initial_prompt = llm(f"What would you like to know about {st.session_state.current_disease}?")
                 st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": (f"I can help you understand more about {st.session_state.current_disease}. "
-                               "You can ask me about:\n"
-                               "• Symptoms and how to identify them\n"
-                               "• Common causes and risk factors\n"
-                               "• Prevention methods and treatment options\n"
-                               "• General information about the condition\n\n"
-                               "What would you like to know?")
-                })
+                "role": "assistant",
+                "content": initial_prompt
+            })
 
             # Display chat messages
             for message in st.session_state.messages:
@@ -233,40 +228,35 @@ def main():
                     st.write(message["content"])
 
             # User chat input
-            chat_prompt = st.chat_input("Ask about your condition...")
+            chat_prompt = st.chat_input("Ask about your condition or other skin-related topics...")
             if chat_prompt:
-                # Append user message
+            # Append user message
                 st.session_state.messages.append({"role": "user", "content": chat_prompt})
                 with st.chat_message("user"):
                     st.write(chat_prompt)
 
-                # Process user input
-                lower_prompt = chat_prompt.lower()
-                
-                # Determine response based on user input
-                if any(word in lower_prompt for word in ['yes', 'sure', 'okay', 'tell me']):
-                    response = generate_comprehensive_response(st.session_state.current_disease)
-                elif any(keyword in lower_prompt for keyword in ['symptom', 'cause', 'prevent', 'cure', 'treat']):
-                    response = generate_comprehensive_response(st.session_state.current_disease, lower_prompt)
-                else:
-                    # For other queries, use LLM but with context
+                # Filter input to ensure it’s related to skin and its conditions
+                skin_related_keywords = ['skin', 'disease', 'symptom', 'rash', 'infection', 'condition', 'treatment', 'prevention', 'care', 'cure']
+                if any(keyword in chat_prompt.lower() for keyword in skin_related_keywords):
                     try:
-                        llm_response = generate_response(chat_prompt, st.session_state.current_disease, llm)
-                        # Validate LLM response contains relevant information
-                        if st.session_state.current_disease.lower() in llm_response.lower():
+                    # Generate response with disease context
+                        llm_response = llm(f"{chat_prompt} in the context of {st.session_state.current_disease} or general skin health")
+                        # Check if response is on-topic
+                        if any(keyword in llm_response.lower() for keyword in skin_related_keywords):
                             response = llm_response
                         else:
-                            # Fallback to comprehensive information
                             response = generate_comprehensive_response(st.session_state.current_disease)
                     except Exception as e:
-                        # Fallback response in case of LLM errors
+                    # Fallback response for LLM errors
                         response = generate_comprehensive_response(st.session_state.current_disease)
+                else:
+                    response = ("Please ask about skin health, skin diseases, or care and treatment for skin conditions.")
 
-                # Add follow-up suggestions
+                # Add follow-up suggestions to keep the conversation on-topic
                 response += "\n\nYou can also ask about:\n" \
-                           "• Specific symptoms to watch for\n" \
-                           "• Risk factors and causes\n" \
-                           "• Treatment options and prevention strategies"
+                       "• Specific symptoms to watch for\n" \
+                       "• Risk factors and causes\n" \
+                       "• Treatment options and prevention strategies for skin conditions"
 
                 # Append and display assistant's response
                 st.session_state.messages.append({"role": "assistant", "content": response})
