@@ -183,7 +183,7 @@ def main():
         
         if uploaded_file:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+            st.image(image, caption="Uploaded Image", use_container_width=True)
 
             try:
                 processed_image = preprocess_image(image)
@@ -216,7 +216,11 @@ def main():
         if st.session_state.current_disease:
             if 'initial_prompt_shown' not in st.session_state:
                 st.session_state.initial_prompt_shown = True
-                initial_prompt = llm(f"What would you like to know about {st.session_state.current_disease}?")
+                try:
+                    initial_prompt = llm.invoke(f"What would you like to know about {st.session_state.current_disease}?")
+                except Exception:
+                    initial_prompt = f"I can help you with information about {st.session_state.current_disease}. What specific questions do you have?"
+                
                 st.session_state.messages.append({
                 "role": "assistant",
                 "content": initial_prompt
@@ -240,7 +244,7 @@ def main():
                 if any(keyword in chat_prompt.lower() for keyword in skin_related_keywords):
                     try:
                     # Generate response with disease context
-                        llm_response = llm(f"{chat_prompt} in the context of {st.session_state.current_disease} or general skin health")
+                        llm_response = llm.invoke(f"{chat_prompt} in the context of {st.session_state.current_disease} or general skin health")
                         # Check if response is on-topic
                         if any(keyword in llm_response.lower() for keyword in skin_related_keywords):
                             response = llm_response
